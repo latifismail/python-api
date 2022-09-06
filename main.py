@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 from typing import Optional
 import uuid
@@ -31,18 +31,21 @@ def get_latest_post():
     return {"data": post}
 
 @app.get("/posts/{id}")
-def get_post(id):
+def get_post(id, response: Response):
     post = find_post(id)
     if post == None:
+        response.status_code = status.HTTP_404_NOT_FOUND
         return {"message": "Post not found"}
 
     return {"data": post}
 
 @app.post("/posts")
-def create_posts(payload: Post):
+def create_posts(payload: Post, response: Response):
     post = payload.dict()
     post['id'] = str(uuid.uuid4())
     posts.append(post)
+
+    response.status_code = status.HTTP_201_CREATED
 
     return {
         "message": "success",
