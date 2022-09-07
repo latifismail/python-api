@@ -47,7 +47,7 @@ def create_post(payload: Post, response: Response):
     posts.append(post)
 
     return {
-        "message": "success",
+        "message": "Post created successfully",
         "data": post
     }
 
@@ -60,3 +60,18 @@ def delete_post(id):
     posts.pop(index)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.put("/posts/{id}")
+def update_post(id, payload: Post):
+    index, post = find_post(id)
+    if index == None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
+    
+    posts.pop(index)
+    updated_post = payload.dict()
+    for k in updated_post.keys():
+        post[k] = updated_post[k]
+
+    posts.append(post)
+    
+    return {"message": "Post updated successfully"}
