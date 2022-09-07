@@ -13,9 +13,11 @@ class Post(BaseModel):
 
 posts = []
 
-def find_post(id):
-    result = next((post for post in posts if post["id"] == id), None)
-    return result
+def find_post(id) -> tuple:
+    for index, post in enumerate(posts):
+        if post["id"] == id:
+            return index, post
+    return None, None
 
 @app.get("/")
 async def root():
@@ -32,21 +34,29 @@ def get_latest_post():
 
 @app.get("/posts/{id}")
 def get_post(id):
-    post = find_post(id)
+    _, post = find_post(id)
     if post == None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
 
     return {"data": post}
 
-@app.post("/posts")
-def create_posts(payload: Post, response: Response):
+@app.post("/posts", status_code=status.HTTP_201_CREATED)
+def create_post(payload: Post, response: Response):
     post = payload.dict()
     post['id'] = str(uuid.uuid4())
     posts.append(post)
-
-    response.status_code = status.HTTP_201_CREATED
 
     return {
         "message": "success",
         "data": post
     }
+
+@app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_post(id):
+    index, _ = find_post(id)
+    if index == None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
+    
+    posts.pop(index)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
