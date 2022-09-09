@@ -1,31 +1,18 @@
-from fastapi import FastAPI, Response, status, HTTPException
+from fastapi import FastAPI, Response, status, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
-from psycopg2.extras import RealDictCursor
-import psycopg2
+from sqlalchemy.orm import Session
 
-from app import config
+from . import models
+from .database import engine, get_db
+
 
 app = FastAPI()
-
-try:
-    conn = psycopg2.connect(
-        host=config.HOST, database=config.DB, user=config.USER, password=config.PASSWORD,
-        cursor_factory=RealDictCursor
-    )
-    cursor = conn.cursor()
-    print(f"Connected to {config.DB} on {config.HOST}")
-
-except Exception as error:
-    print("Failed to connect to database")
-    print(f"Error: {error}")
+models.Base.metadata.create_all(bind=engine)
 
 class Post(BaseModel):
     title: str
     content: str
     published: bool = False
-    rating: Optional[int] = None
-
 
 
 @app.get("/")
@@ -33,80 +20,57 @@ async def root():
     return {"message": "Hello World"}
 
 @app.get("/posts")
-def get_posts():
-    cursor.execute(""" SELECT * FROM posts """)
-    posts = cursor.fetchall()
+def get_posts(db: Session = Depends(get_db)):
+    posts = db.query(models.Post).all()
     return {"data": posts}
 
 @app.get("/posts/latest")
-def get_latest_post():
-    cursor.execute(
-        """
-        SELECT * FROM posts
-        ORDER BY created_at DESC
-        LIMIT 1
-        """
-    )
-    post = cursor.fetchone()
+def get_latest_post(db: Session = Depends(get_db)):
+    post = db.query(models.Post).order_by(models.Post.created_at.desc()).limit(1).first()
     return {"data": post}
 
 @app.get("/posts/{id}")
-def get_post(id):
-    cursor.execute(
-        """
-        SELECT * FROM posts
-        where id = %s
-        """, (id)
-    )
-    post = cursor.fetchone()
+def get_post(id, db: Session = Depends(get_db)):
+    post = db.query(models.Post).filter(models.Post.id == id).first()
     if post == None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
 
     return {"data": post}
 
 @app.post("/posts", status_code=status.HTTP_201_CREATED)
-def create_post(payload: Post, response: Response):
-    cursor.execute(
-        """
-        INSERT INTO posts (title, content, published, rating)
-        VALUES (%s, %s, %s, %s)
-        RETURNING *
-        """, (payload.title, payload.content, payload.published, payload.rating)
-    )
-    post = cursor.fetchone()
-    conn.commit()
+def create_post(payload: Post, db: Session = Depends(get_db)):
+    post = models.Post(**payload.dict())
+
+    db.add(post)
+    db.commit()
+    db.refresh(post)
 
     return {
         "message": "Post created successfully",
         "data": post
     }
 
-@app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(id):
-    cursor.execute(
-        """
-        DELETE FROM posts
-        WHERE id = %s
-        """, (id)
-    )
-    conn.commit()
+@app.delete("/posts/{id}")
+def delete_post(id, db: Session = Depends(get_db)):
+    post = db.query(models.Post).filter(models.Post.id == id)
+    if post.first() == None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
+    
+    post.delete(synchronize_session=False)
+    db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.put("/posts/{id}")
-def update_post(id, payload: Post):
-    cursor.execute(
-        """
-        UPDATE posts
-        SET title = %s, content = %s, published = %s, rating = %s
-        WHERE id = %s
-        RETURNING *
-        """, (payload.title, payload.content, payload.published, payload.rating, id)
-    )
-    updated_post = cursor.fetchone()
-    conn.commit()
+def update_post(id, payload: Post, db: Session = Depends(get_db)):
+    post = db.query(models.Post).filter(models.Post.id == id)
+    if post.first() == None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
     
+    post.update(payload.dict(), synchronize_session=False)
+    db.commit()
+
     return {
         "message": "Post updated successfully",
-        "data": updated_post
+        "data": post.first()
     }
