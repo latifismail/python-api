@@ -8,7 +8,10 @@ from ..database import get_db
 from .. import schemas
 
 
-router = APIRouter(prefix="/users")
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"]
+)
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
